@@ -2,6 +2,7 @@
 
 //  Load DOM Reader
 require_once PDS_SS_LIB_PATH . 'class/simple_html_dom.php';
+require_once PDS_SS_LIB_PATH . 'class/PDS_SS_Parse_INI.php';
 
 class PDS_SS_Suggestion_Finder {
 
@@ -9,61 +10,12 @@ class PDS_SS_Suggestion_Finder {
     private $def_provider;
 
     //  Suggestion Provider Hosts to Mappings
-    private $providers = array(
-
-        //  Google Search Engine
-        'google' => array(
-            'label' => 'Google Search Engine',
-            'mappers' => array(),
-            'max_map_priority' => 0
-        ),
-
-        //  Bing Search Engine
-        'bing' => array(
-            'label' => 'Bing Search Engine',
-            'mappers' => array(),
-            'max_map_priority' => 0
-        )
-    );
+    private $providers = array();
 
     
     //  Constructor
     public function __construct() {
-
-        //  Set Random Provider
-        $this->randomizeProvider();
-
-        //  Add Default Mapper for Google
-        $this->addProviderMapper('google', 'default',
-            'https://www.google.com/search?q={query}',
-            array(
-                '/<span class="spell">(.*)<a(.*)">(?P<suggestion>.*)<span class="spell_orig">/i',
-                '/<span class="spell">(.*)<b><i>(?P<suggestion>.*)<\/i><\/b><\/a><br><span class="spell_orig">/i'
-            ));
-
-        //  Add Default Mapper for Bing
-        $this->addProviderMapper('bing', 'default',
-            'http://www.bing.com/search?q={query}',
-            '/<h2a class="b_pAlt">(.*)<a(.*)><strong>(?P<suggestion>.*)<\/strong><\/a>\.<\/h2><\/div><p>Do you want results/i');
-
-        //  Add Another Match for Bing
-        $this->addMatchForProviderMapper('bing', 'default', function($contents) {
-
-            //  Read DOM
-            $html = str_get_html($contents);
-
-            //  Check
-            if(!$html)  return null;
-
-            //  Find Text Container
-            $textContainer = $html->find('div[id=sp_requery] a', 0);
-            if(!$textContainer)
-                $textContainer = $html->find('div[id=content] div[id=results_container] div.autospell a', 0);
-
-            //  Check and Return
-            if($textContainer)  return $textContainer->plaintext;
-            return null;
-        });
+        //  Do Nothing
     }
 
     //  Get Database Reader
@@ -127,6 +79,9 @@ class PDS_SS_Suggestion_Finder {
                 'mappers' => array(),
                 'max_map_priority' => 0
             );
+
+            //  Randomize Provider
+            $this->randomizeProvider();
         }
     }
 
@@ -297,8 +252,12 @@ class PDS_SS_Suggestion_Finder {
         //  Get Local Suggestions
         $suggestions = $this->getLocalSuggestions($query);
 
+        //  Get Last Suggestion Loaded Time
+        $last_loaded = get_option('__spell_suggestions_loaded__' . $this->def_provider);
+
         //  Check Suggesstions Found
-        if(sizeof($suggestions) == 0 || $force) {
+        if((!$last_loaded || ($last_loaded + 120) < time())
+                && (sizeof($suggestions) == 0 || $force)) {
 
             //  Read from Providers
             $new_suggestions = $this->_read_from_providers($query);
@@ -312,6 +271,9 @@ class PDS_SS_Suggestion_Finder {
 
             //  Set
             $suggestions = $new_suggestions;
+
+            //  Store Last Suggestion Loaded Time
+            update_option('__spell_suggestions_loaded__' . $this->def_provider, time());
         }
 
         //  Return Suggestions
@@ -394,6 +356,23 @@ class PDS_SS_Suggestion_Finder {
         return $suggestions;
     }
 
+    //  Read Config File
+    public function readConfigFile($file_path, $clear = false) {
+
+        //  Read Configurations
+        $configs = PDS_SS_Parse_INI::parse($file_path, true);
+
+        //  Check Configs Loaded
+        if($configs) {
+
+            //  Store
+            $this->providers = ($clear ? $configs : array_merge($this->providers, $configs));
+
+            //  Set Random Provider
+            $this->randomizeProvider();
+        }
+    }
+
     //  Read cURL Data
     private function _curl_read_url($url) {
 
@@ -474,14 +453,4 @@ class PDS_SS_Suggestion_Finder {
         }
         $array = $ret;
     }
-}
-
-//  Create a Global Instance
-global $ss_finder;
-$ss_finder = new PDS_SS_Suggestion_Finder();
-
-//  Helper to Get Instance
-function getSSFinderInstance() {
-    global $ss_finder;
-    return $ss_finder;
 }

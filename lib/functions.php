@@ -1,7 +1,29 @@
 <?php
 
+//  Create a Global Instance
+global $ss_finder;
+
+//  Create the Finder Instance
+$ss_finder = new PDS_SS_Suggestion_Finder();
+
+//  Parse the INI Config
+if(file_exists(PDS_SS_PATH . 'parser.ini')) {
+
+    //  Load the Config File
+    $ss_finder->readConfigFile(PDS_SS_PATH . 'parser.ini');
+}
+
+//  Helper to Get Instance
+function getSSFinderInstance() {
+    global $ss_finder;
+    return $ss_finder;
+}
+
 //  Make the Valid WP Query Object
 function pds_ss_make_filtered_wp_query($query_term, $post_type, $args = array(), $limit = 5, $thresholdStart = 2, $thresholdEnd = 4) {
+
+    //  Suggestions
+    $suggestion = $suggestions = null;
 
     //  Search
     $wp_query = pds_ss_filtered_wp_search($query_term, $post_type, $args, $limit);
@@ -15,8 +37,11 @@ function pds_ss_make_filtered_wp_query($query_term, $post_type, $args = array(),
         //  Check for Suggestions
         if(sizeof($suggestions) > 0) {
 
+            //  Set Suggestion
+            $suggestion = $suggestions[0];
+
             //  Make Query
-            $wp_query = pds_ss_filtered_wp_search($suggestions[0], $post_type, $args, $limit);
+            $wp_query = pds_ss_filtered_wp_search($suggestion, $post_type, $args, $limit);
         }
     }
 
@@ -28,8 +53,8 @@ function pds_ss_make_filtered_wp_query($query_term, $post_type, $args = array(),
     if(!$wp_query->have_posts())
         $wp_query = pds_ss_filtered_wp_search(pds_ss_breakdown_string($query_term, $thresholdStart, $thresholdEnd), $post_type, $args, $limit);
 
-    //  Return Query
-    return $wp_query;
+    //  Return Response
+    return array('query' => $wp_query, 'suggestion' => $suggestion, 'suggestions' => $suggestions);
 }
 
 //  Filtered Wordpress Search
